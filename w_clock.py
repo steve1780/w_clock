@@ -4,7 +4,7 @@
 # scase   11/25/22    From node_timer.py programs 
 #         03/14/25    Was node_clock2.py  in sandbox
 #
-#         03/14/25    Timeset branch          
+#                   
 #====================================================================
 
 from umqtt.simple import MQTTClient
