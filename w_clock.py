@@ -1,12 +1,10 @@
 #====================================================================
-# node_clock2.py    Clock from Node Red via MQTT
+# w_clock.py         7-Segment LED Clock with mqtt control
 #
 # scase   11/25/22    From node_timer.py programs 
-#		  12/21/22	  Added timer2 for RTC update interval
+#         03/14/25    Was node_clock2.py  in sandbox
 #
-#		  06/24/23	  Change to communicate with gamma
-#		  03/7/25	  Changes to time update
-#
+#         03/14/25    Timeset branch          
 #====================================================================
 
 from umqtt.simple import MQTTClient
@@ -16,7 +14,7 @@ import time
 import json
 import network
 import machine
-import max7219_test
+import max7219
 
 #----------------------------------------------------------------------#
 # Pin definitions on GPS Clock board
@@ -26,12 +24,13 @@ import max7219_test
 # Pin 23 - CS for SPI on MAX7219 LED board
 # Pin 25 - TP1 Output pins
 # Pin 26 - TP3
-# Pin 27 - TP5
+# Pin 27 - TP5 Using for timeset switch
 
 ledB = Pin(2, Pin.OUT)
 ledB.value(0)
 
 ledY = Pin(4, Pin.OUT)
+timeset = Pin(27, Pin.IN, Pin.PULL_UP)
 ledY.value(1)
 
 hours = 0
@@ -39,6 +38,7 @@ mins = 0
 seconds = 0
 times_up = 0
 onthehour = False 
+timeswFlag = False
 
 #----------------------------------------------------------------------#
 # Read json configuration file
@@ -159,7 +159,10 @@ def write_time():
   display.register(4, min_units)
   display.register(2, sec_tens)
   display.register(1, sec_units)
-  
+
+def timesw(timeswitch):
+   timeswFlag = True
+
 
 # Initialization ------------------------------------------------------
 #
@@ -190,7 +193,7 @@ cs.off()
 
 # init the display object and the spi interface
 spi = SoftSPI(baudrate=10000000, polarity=1, phase=0, sck=Pin(21), mosi=Pin(22),miso=Pin(13))
-display = max7219_test.Max7219(spi, cs)
+display = max7219.Max7219(spi, cs)
 
 init_display()
 tim1 = Timer(1)
@@ -201,6 +204,8 @@ c.publish(b"ntpREQ", b"request")  # trigger server to send update on HH:MM:SS
 
 tim1.init(period=1000, mode=Timer.PERIODIC, callback=flip_led)
 tim2.init(period=3600000, mode=Timer.PERIODIC, callback=hour_timer)
+
+timeset.Irq(timesw, trigger=Pin.IRQ_FALLING) # set callback for timeswitch
 
 
 # Main loop -----------------------------------------------------------
