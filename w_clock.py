@@ -3,7 +3,8 @@
 #
 # scase   11/25/22    From node_timer.py programs 
 #         03/14/25    Was node_clock2.py  in sandbox
-#
+#         03/29/25    Added NTP from uPython library
+#                     and removed the manual timesetting feature
 #                   
 #====================================================================
 
@@ -15,6 +16,7 @@ import json
 import network
 import machine
 import max7219
+import ntptime
 
 #----------------------------------------------------------------------#
 # Pin definitions on GPS Clock board
@@ -37,11 +39,7 @@ hours = 0
 mins = 0
 seconds = 0
 times_up = 0
-onthehour = False 
-timeswFlag = False
-hh_flag = False 
-mm_flag = False 
-ss_flag = False
+onthehour = True    
 
 #----------------------------------------------------------------------#
 # Read json configuration file
@@ -53,10 +51,13 @@ with open('config.json') as fptr:
 SERVER = config["server"]
 SSID = config["ssid"]
 PWD = config["password"]
+GMTOFFSET = config["gmtoffset"]
 pflag = config["printflag"]
 
 print("Configuration : --------------------------------------- ")
 print(config)
+
+gmt_correction = GMTOFFSET + 1
 
 # Default MQTT server to connect to
 CLIENT_ID = ubinascii.hexlify(machine.unique_id())
@@ -126,18 +127,6 @@ def hour_timer(tim2):
     # set the onthehour flag so that RTC can be updated
     onthehour = True 
 
-def setHours(pin):
-    global hh_flag
-    hh_flag = True
-
-def setMins(pin):
-    global mm_flag
-    mm_flag = True
-    
-def setSecs(pin):
-    global ss_flag
-    ss_flag = True
-
 #-------------------------------------------------------------------------#
 # take time units and place on clock digits
 def write_time():
@@ -175,21 +164,22 @@ def write_time():
   display.register(2, sec_tens)
   display.register(1, sec_units)
 
-def timesw(pin):
-   global timeswFlag
-   time.sleep(.07)
-   timeswFlag = True
 
-def blinkHours():
-    for i in list(range(1,9)):
-      display.register(i, 0XF) 
-    
-    display.register(8, 0)
-    display.register(7, 0)   
-    time.sleep(1)
-    display.register(8, 0xF)
-    display.register(7, 0XF) 
-    time.sleep(1)
+#-------------------------------------------------------------------------#
+# get an offical update on the time from the NTP pool
+# built-in micropython function
+
+def set_NTP():
+   global GMTOFFSET
+   gmt_correction = GMTOFFSET
+   # get the time from the ntp pool
+
+   ntptime.settime()
+   rtime = time.localtime()
+   if rtime[7] > 306 :				# fall back
+        gmt_correction = GMTOFFSET + 1
+   
+   rtc.datetime((rtime[0],rtime[1],rtime[2],rtime[6],rtime[3] - gmt_correction ,rtime[4],rtime[5], 0))    
 
 
 # Initialization ------------------------------------------------------
@@ -224,11 +214,14 @@ spi = SoftSPI(baudrate=10000000, polarity=1, phase=0, sck=Pin(21), mosi=Pin(22),
 display = max7219.Max7219(spi, cs)
 
 init_display()
-timeset.irq(trigger=Pin.IRQ_FALLING, handler=timesw) # set callback for timeswitch
 tim1 = Timer(1)
 tim2 = Timer(2)
-c.publish(b"ntpREQ", b"request")  # trigger server to send update on HH:MM:SS
-                               
+
+# standard time sync will come from internal ntp pool servers, not from mqtt servers time
+# set the time and rtc from ntp server data
+
+set_NTP()
+
 
 tim1.init(period=1000, mode=Timer.PERIODIC, callback=flip_led)
 tim2.init(period=3600000, mode=Timer.PERIODIC, callback=hour_timer)
@@ -243,52 +236,11 @@ while 1:
     try:
         while 1:
           
-          if timeswFlag :
-             tim1.deinit()
-             timeset.irq(trigger=Pin.IRQ_FALLING, handler=setHours())
-             start = 
-             # HH set-----------------------------------------
-             #setup timer for new 1 sec interval
-             #setup timer for sw callback
-             
-             # clear diaplay & reset the stopwatch
-             for i in list(range(1,9)):
-                  display.register(i, 0XF)
-             start = time.time()
-             print((time.time() - start))
-             
-             while ((time.time_ns() - start)//10e8) < 10 :
-                 # check the call back flag and inc the HH, rollover if needed
-                 # every time we increment the HH, reset the stopwatch
-                 if timeswFlag:
-                     hours += 1
-                     if hours>24:
-                         hours = 0
-                     timeswFlag = False
-                     rtc.datetime((2022, 11, 11, 1, hours, mins, seconds,0))
-                     write_time()
-                     print((time.time_ns() - start)//10e8)
-                 
-
-             
-             # MM set-----------------------------------------
-             #setup timer for new 1 sec interval
-             #setup timer for sw callback
-             # reset the stopwatch
-                 # check the call back flag and inc the HH, rollover if needed
-                 # every time we increment the HH, reset the stopwatch
-             
-             
-             
-             tim1.init(period=1000, mode=Timer.PERIODIC, callback=flip_led)
-             timeswFlag = False
-             
+          
           if onthehour :
               # flags are used because uPython is multi-threaded and putting
               # a MQTT request inside a callback is not advised
-              
-              c.publish(b"ntpREQ", b"request")
-              print("RTC update requested")
+              set_NTP()
               onthehour = False 
               
           c.check_msg()   
