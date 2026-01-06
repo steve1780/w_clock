@@ -87,6 +87,9 @@ def do_message(topic, msg):
     elif b'ntpHOUR' in topic :
         mess = str(msg, 'UTF-8')  
         hours = int(float(mess))
+    elif b'gmtOffset' in topic :
+        mess = str(msg, 'UTF-8')
+        GMTOFFSET = int(float(mess))
     else :
         print("Invalid MQTT command decode ")
 
@@ -204,6 +207,7 @@ c.connect()
 sub_topic("ntpHOUR", 0)
 sub_topic("ntpMIN", 0)
 sub_topic("ntpSEC", 0)
+sub_topic("gmtOffset", 0)
 
 # setup pin that is the control stobe for the display
 cs = Pin(23, Pin.OUT)
